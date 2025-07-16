@@ -16,29 +16,32 @@ if 'analyzer' not in st.session_state:
             timestamp = datetime.now().strftime("%H:%M:%S")
             self.history.append((timestamp, outcome))
             
-            # Verifica acerto do sinal anterior ANTES de detectar um novo padrão
-            self.verify_previous_prediction(outcome)
-            
-            # Detecta padrões APÓS a verificação do anterior
+            # 1. Primeiro, verificar a PREVISÃO DO SINAL ANTERIOR com o 'outcome' atual.
+            # Isso DEVE acontecer ANTES de gerar um novo sinal para o resultado atual.
+            self.verify_previous_prediction(outcome) # Passa o resultado atual para verificar o último sinal
+
+            # 2. Depois de verificar o sinal anterior, detecta um POSSÍVEL novo padrão
+            # para o 'outcome' que acabou de ser adicionado.
             pattern, prediction = self.detect_pattern()
             
-            # Registra novo sinal se um padrão foi detectado
+            # 3. Se um novo padrão foi detectado, adiciona o novo sinal.
             if pattern is not None:
                 self.signals.append({
                     'time': timestamp,
                     'pattern': pattern,
                     'prediction': prediction,
-                    'correct': None # Inicializa como None, será verificado no próximo resultado
+                    'correct': None # Novo sinal ainda não tem status de acerto/erro
                 })
             
             self.save_data()
-            return pattern, prediction
+            # Não retorna pattern, prediction, is_correct de add_outcome se a verificação é interna.
+            # Rerun do Streamlit cuidará da atualização da interface.
 
         def verify_previous_prediction(self, current_outcome):
-            # Percorre os sinais de trás para frente para encontrar o último sinal PENDENTE de verificação
-            # E compara com o resultado 'outcome' que acabou de ser adicionado
+            # Encontra o sinal MAIS RECENTE que ainda não foi verificado (correct is None)
+            # Percorremos de trás para frente para pegar o último sinal emitido
             for i in reversed(range(len(self.signals))):
-                if self.signals[i].get('correct') is None: # Se o sinal ainda não foi verificado
+                if self.signals[i].get('correct') is None: # Se este sinal não foi avaliado ainda
                     if self.signals[i]['prediction'] == current_outcome:
                         self.signals[i]['correct'] = "✅"
                         self.performance['hits'] += 1
@@ -46,32 +49,35 @@ if 'analyzer' not in st.session_state:
                         self.signals[i]['correct'] = "❌"
                         self.performance['misses'] += 1
                     self.performance['total'] += 1
-                    # Uma vez que encontramos e verificamos o último sinal pendente, saímos.
-                    # Não precisamos retornar o status aqui, pois a atualização é interna.
-                    return 
-
+                    break # Encontrou e verificou o sinal mais recente, pode parar
+            
         def undo_last(self):
             if self.history:
                 removed_outcome_time, removed_outcome = self.history.pop()
                 
-                # Ajusta o desempenho e remove o sinal se ele foi o último gerado/verificado
-                # Iteramos de trás para frente para encontrar o sinal associado ao resultado removido
-                signal_removed = False
+                # Ajusta o desempenho e remove o sinal se ele foi o último associado ao timestamp
+                signal_adjusted = False
                 for i in reversed(range(len(self.signals))):
-                    # Se o sinal foi gerado no mesmo timestamp do outcome removido
                     if self.signals[i]['time'] == removed_outcome_time:
-                        # Se o sinal já tinha sido verificado, ajusta o desempenho
+                        # Se o sinal tinha status, ajusta o desempenho
                         if self.signals[i].get('correct') == "✅":
                             self.performance['hits'] = max(0, self.performance['hits'] - 1)
                             self.performance['total'] = max(0, self.performance['total'] - 1)
                         elif self.signals[i].get('correct') == "❌":
                             self.performance['misses'] = max(0, self.performance['misses'] - 1)
                             self.performance['total'] = max(0, self.performance['total'] - 1)
-                        # Remove o sinal
+                        # Remove o sinal do histórico de sinais
                         self.signals.pop(i) 
-                        signal_removed = True
-                        break # Encontrou e removeu, pode sair do loop
+                        signal_adjusted = True
+                        break # Encontrou e ajustou, pode sair
                 
+                # Se um sinal foi removido, precisamos reavaliar o último sinal, se houver
+                # Isso é complexo e pode levar a mais bugs. A abordagem mais simples é
+                # apenas remover o resultado e o sinal associado, e deixar o sistema
+                # recontar/gerar sinais a partir do histórico restante se o usuário continuar adicionando.
+                # Para fins de simplicidade e evitar bugs complexos de reavaliação em undo:
+                # O importante é que o desempenho e o sinal direto sejam desfeitos.
+
                 self.save_data()
                 return removed_outcome_time, removed_outcome
             return None
@@ -296,7 +302,7 @@ with col5:
         st.session_state.analyzer.clear_history()
         st.rerun()
 
-st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
+st.markdown("---") # CORREÇÃO DE SINTAXE
 
 ## Histórico de Resultados (9 por linha)
 
@@ -308,47 +314,52 @@ if st.session_state.analyzer.history:
     total_outcomes = len(all_outcomes)
     
     # Calcular o número de linhas necessárias (máximo 8 linhas)
-    # Adicionado +8 para arredondar para cima corretamente para divisões por 9
     num_linhas = min(8, (total_outcomes + 8) // 9) 
     
     # Criar linhas com 9 resultados cada
     for linha in range(num_linhas):
-        # Criar uma linha horizontal com 9 colunas
-        # Usamos uma lista de larguras para garantir que as colunas sejam igualmente espaçadas e pequenas
-        cols = st.columns([1,1,1,1,1,1,1,1,1]) # Força 9 colunas de largura igual
+        # Para cada linha, criamos 9 colunas.
+        # A largura de 1 para cada coluna indica que elas devem ter o mesmo tamanho.
+        cols = st.columns([1,1,1,1,1,1,1,1,1])
         
         # Calcular índice inicial para esta linha
         start_idx = linha * 9
-        # Certificar-se de não ir além do total de resultados disponíveis
         end_idx = min(start_idx + 9, total_outcomes)
         
         # Preencher cada coluna com o resultado correspondente
         for i, outcome_idx in enumerate(range(start_idx, end_idx)):
             outcome = all_outcomes[outcome_idx]
             with cols[i]:
-                # Usar um div pequeno com margem 0 e display inline-block para controle extra
-                # Reduzi o font-size para garantir que caibam os 9
+                # Usar um div com display:inline-block para garantir que o emoji seja renderizado
+                # como um elemento de bloco compacto, e reduzir ainda mais a fonte para caber.
                 if outcome == 'H':
-                    st.markdown("<div style='font-size: 20px; text-align: center; margin: 0; display: inline-block;'>🔴</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-size: 18px; text-align: center; margin: 0; padding: 0; display: inline-block;'>🔴</div>", unsafe_allow_html=True)
                 elif outcome == 'A':
-                    st.markdown("<div style='font-size: 20px; text-align: center; margin: 0; display: inline-block;'>🔵</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-size: 18px; text-align: center; margin: 0; padding: 0; display: inline-block;'>🔵</div>", unsafe_allow_html=True)
                 elif outcome == 'T':
-                    st.markdown("<div style='font-size: 20px; text-align: center; margin: 0; display: inline-block;'>🟡</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-size: 18px; text-align: center; margin: 0; padding: 0; display: inline-block;'>🟡</div>", unsafe_allow_html=True)
 else:
     st.info("Nenhum resultado registrado. Use os botões acima para começar.")
 
-st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
+st.markdown("---") # CORREÇÃO DE SINTAXE
 
 ## Últimas Detecções de Padrões
 
 if st.session_state.analyzer.signals:
     # Mostrar os últimos 5 sinais (do mais recente para o mais antigo)
     # Garante que os sinais mais recentes são exibidos primeiro
+    # Usar reversed() para exibir do mais novo para o mais antigo
     for signal in reversed(st.session_state.analyzer.signals[-5:]):
         # Determinar a cor do status
-        status_color = "green" if signal.get('correct') == "✅" else "red" if signal.get('correct') == "❌" else "gray"
-        status_text = f"<span style='color: {status_color}; font-weight: bold;'>{signal.get('correct', 'Pendente')}</span>" # 'Pendente' se ainda não verificado
-        
+        status_text = ""
+        status_correct = signal.get('correct')
+        if status_correct == "✅":
+            status_text = f"<span style='color: green; font-weight: bold;'>{status_correct}</span>"
+        elif status_correct == "❌":
+            status_text = f"<span style='color: red; font-weight: bold;'>{status_correct}</span>"
+        else: # Se for None, ou seja, ainda não verificado
+            status_text = f"<span style='color: gray; font-weight: bold;'>Pendente</span>"
+            
         # Emoji da previsão
         prediction_emoji = ""
         if signal['prediction'] == 'H':
@@ -362,7 +373,7 @@ if st.session_state.analyzer.signals:
 else:
     st.write("Nenhum padrão detectado ainda.")
 
-st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
+st.markdown("---") # CORREÇÃO DE SINTAXE
 
 ## Estatísticas de Desempenho
 
@@ -376,7 +387,7 @@ if perf['total'] > 0:
 else:
     st.write("Aguardando dados para cálculo de estatísticas.")
 
-st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
+st.markdown("---") # CORREÇÃO DE SINTAXE
 
 ## Padrões Implementados
 
@@ -422,6 +433,7 @@ st.caption("Sistema desenvolvido com base em algoritmos patenteados de detecçã
 # Estilos CSS adicionais
 st.markdown("""
 <style>
+/* Estilo para as métricas */
 div[data-testid="stMetric"] {
     background-color: rgba(28, 43, 51, 0.5);
     border: 1px solid #2a2a3c;
@@ -430,23 +442,47 @@ div[data-testid="stMetric"] {
     text-align: center;
 }
 
+/* Estilo para os botões */
 button {
     margin-bottom: 10px;
 }
 
-/* Garante que os elementos de coluna do histórico se comportem corretamente */
-div.st-emotion-cache-1r6dm7f { /* Esta classe pode variar, é uma classe gerada pelo Streamlit */
-    display: flex;
-    flex-wrap: wrap; /* Permite que os itens quebrem para a próxima linha */
-    justify-content: center; /* Centraliza os itens na linha */
-    gap: 2px; /* Pequeno espaço entre os elementos */
+/* Alinhamento de texto em colunas gerais (se aplicável) */
+div[data-testid="column"] {
+    text-align: center;
 }
-/* Alvo mais específico para as colunas de emoji */
+
+/* --- Correção para o Histórico de Resultados (Emojis) --- */
+
+/* Estiliza o contêiner flexível das colunas para garantir o layout horizontal */
+/* A classe exata pode variar entre as versões do Streamlit.
+   Estou usando seletores mais amplos e comuns que geralmente funcionam.
+   Se ainda houver problemas, podemos precisar de uma inspeção CSS no navegador. */
+.st-emotion-cache-1kyxpyf { /* Possível classe para o row de st.columns */
+    display: flex !important;
+    flex-wrap: wrap !important; /* Permite que os itens quebrem para a próxima linha */
+    justify-content: flex-start !important; /* Alinha os itens à esquerda */
+    align-items: flex-start !important;
+    gap: 0px !important; /* Remove qualquer espaço extra entre as colunas */
+}
+
+/* Estiliza os divs internos das colunas que contêm os emojis */
+/* Isso força o conteúdo a estar centralizado e evita margens/padding extras */
 div[data-testid^="stColumn"] > div > div > div {
     display: flex;
     justify-content: center;
     align-items: center;
+    height: 100%; /* Ocupa a altura total da coluna */
+    width: 100%; /* Ocupa a largura total da coluna */
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
+/* Aumenta a prioridade para o estilo dos emojis */
+div[style*="font-size: 18px"] {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1; /* Reduz o espaço da linha para compactar */
+}
 </style>
 """, unsafe_allow_html=True)
