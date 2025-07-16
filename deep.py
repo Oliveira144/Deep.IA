@@ -283,43 +283,39 @@ with col5:
         st.session_state.analyzer.clear_history()
         st.rerun()
 
-# CORREÇÃO: Exibição do histórico em linhas de 9 resultados
+# CORREÇÃO DEFINITIVA: Exibição do histórico em linhas horizontais de 9 resultados
 st.subheader("Histórico de Resultados (9 por linha)")
 st.caption("Mais recente → Mais antigo (esquerda → direita)")
 
-# Obter todos os resultados (do mais recente para o mais antigo)
-all_outcomes = [outcome for _, outcome in st.session_state.analyzer.history]
-# Inverter para que o mais recente seja o primeiro
-all_outcomes = all_outcomes[::-1]
-total_outcomes = len(all_outcomes)
-
-# Calcular o número de linhas (máximo 8)
-num_linhas = min(8, (total_outcomes + 8) // 9)  # Arredonda para cima
-
-# Exibir as linhas
-for linha in range(num_linhas):
-    # Criar uma linha com 9 colunas
-    cols = st.columns(9)
+# Obter todos os resultados (mais recente primeiro)
+if st.session_state.analyzer.history:
+    # Pegar os resultados em ordem reversa (mais recente primeiro)
+    all_outcomes = [outcome for _, outcome in st.session_state.analyzer.history][::-1]
+    total_outcomes = len(all_outcomes)
     
-    # Preencher cada coluna com o resultado correspondente
-    for coluna in range(9):
-        idx = linha * 9 + coluna
-        if idx < total_outcomes:
+    # Calcular o número de linhas necessárias (máximo 8 linhas)
+    num_linhas = min(8, (total_outcomes + 8) // 9)
+    
+    # Criar linhas com 9 resultados cada
+    for linha in range(num_linhas):
+        # Criar uma linha horizontal com 9 colunas
+        cols = st.columns(9)
+        
+        # Calcular índice inicial para esta linha
+        start_idx = linha * 9
+        end_idx = min(start_idx + 9, total_outcomes)
+        
+        # Preencher cada coluna com o resultado correspondente
+        for i, idx in enumerate(range(start_idx, end_idx)):
             outcome = all_outcomes[idx]
-            with cols[coluna]:
+            with cols[i]:
                 if outcome == 'H':
                     st.markdown("<div style='font-size: 24px; text-align: center;'>🔴</div>", unsafe_allow_html=True)
                 elif outcome == 'A':
                     st.markdown("<div style='font-size: 24px; text-align: center;'>🔵</div>", unsafe_allow_html=True)
                 elif outcome == 'T':
                     st.markdown("<div style='font-size: 24px; text-align: center;'>🟡</div>", unsafe_allow_html=True)
-        else:
-            # Espaço vazio para manter o layout
-            with cols[coluna]:
-                st.write("")
-
-# Mensagem se não houver histórico
-if total_outcomes == 0:
+else:
     st.info("Nenhum resultado registrado. Use os botões acima para começar.")
 
 # Últimos sinais detectados
