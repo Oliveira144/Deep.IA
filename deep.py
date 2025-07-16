@@ -314,7 +314,8 @@ if st.session_state.analyzer.history:
     # Criar linhas com 9 resultados cada
     for linha in range(num_linhas):
         # Criar uma linha horizontal com 9 colunas
-        cols = st.columns(9)
+        # Usamos uma lista de larguras para garantir que as colunas sejam igualmente espaçadas e pequenas
+        cols = st.columns([1,1,1,1,1,1,1,1,1]) # Força 9 colunas de largura igual
         
         # Calcular índice inicial para esta linha
         start_idx = linha * 9
@@ -325,12 +326,14 @@ if st.session_state.analyzer.history:
         for i, outcome_idx in enumerate(range(start_idx, end_idx)):
             outcome = all_outcomes[outcome_idx]
             with cols[i]:
+                # Usar um div pequeno com margem 0 e display inline-block para controle extra
+                # Reduzi o font-size para garantir que caibam os 9
                 if outcome == 'H':
-                    st.markdown("<div style='font-size: 24px; text-align: center;'>🔴</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-size: 20px; text-align: center; margin: 0; display: inline-block;'>🔴</div>", unsafe_allow_html=True)
                 elif outcome == 'A':
-                    st.markdown("<div style='font-size: 24px; text-align: center;'>🔵</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-size: 20px; text-align: center; margin: 0; display: inline-block;'>🔵</div>", unsafe_allow_html=True)
                 elif outcome == 'T':
-                    st.markdown("<div style='font-size: 24px; text-align: center;'>🟡</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-size: 20px; text-align: center; margin: 0; display: inline-block;'>🟡</div>", unsafe_allow_html=True)
 else:
     st.info("Nenhum resultado registrado. Use os botões acima para começar.")
 
@@ -413,7 +416,7 @@ with st.expander("Ver descrição dos 30 padrões"):
     30. Padrão Reativo: A-H-A-H-H
     """)
 
-st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
+st.markdown("---") # Rodapé sempre com markdown
 st.caption("Sistema desenvolvido com base em algoritmos patenteados de detecção de padrões - v2.0")
 
 # Estilos CSS adicionais
@@ -431,8 +434,19 @@ button {
     margin-bottom: 10px;
 }
 
-div[data-testid="column"] {
-    text-align: center;
+/* Garante que os elementos de coluna do histórico se comportem corretamente */
+div.st-emotion-cache-1r6dm7f { /* Esta classe pode variar, é uma classe gerada pelo Streamlit */
+    display: flex;
+    flex-wrap: wrap; /* Permite que os itens quebrem para a próxima linha */
+    justify-content: center; /* Centraliza os itens na linha */
+    gap: 2px; /* Pequeno espaço entre os elementos */
 }
+/* Alvo mais específico para as colunas de emoji */
+div[data-testid^="stColumn"] > div > div > div {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
 </style>
 """, unsafe_allow_html=True)
