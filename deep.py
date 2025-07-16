@@ -16,43 +16,29 @@ if 'analyzer' not in st.session_state:
             timestamp = datetime.now().strftime("%H:%M:%S")
             self.history.append((timestamp, outcome))
             
-            # Detecta padrões
+            # Verifica acerto do sinal anterior ANTES de detectar um novo padrão
+            self.verify_previous_prediction(outcome)
+            
+            # Detecta padrões APÓS a verificação do anterior
             pattern, prediction = self.detect_pattern()
             
-            # Verifica acerto do sinal anterior
-            is_correct = self.verify_previous_prediction(outcome)
-            
-            # Registra novo sinal
+            # Registra novo sinal se um padrão foi detectado
             if pattern is not None:
                 self.signals.append({
                     'time': timestamp,
                     'pattern': pattern,
                     'prediction': prediction,
-                    'correct': is_correct
+                    'correct': None # Inicializa como None, será verificado no próximo resultado
                 })
             
             self.save_data()
-            return pattern, prediction, is_correct
+            return pattern, prediction
 
         def verify_previous_prediction(self, current_outcome):
-            if len(self.signals) > 0:
-                last_signal = self.signals[-1]
-                # A verificação deve ocorrer ANTES de adicionar o novo sinal para ser sobre a PREDIÇÃO ANTERIOR
-                # E o resultado atual.
-                # Remove o sinal mais recente para que a verificação seja feita com base no penúltimo sinal
-                # e o resultado atual, e depois adiciona o sinal corrigido.
-                # Se o último sinal ainda não tem 'correct', é o que acabou de ser gerado, não verificamos ele aqui.
-                if last_signal.get('correct') is None: # Se o último sinal ainda não foi verificado
-                    # Remove o sinal temporariamente para que a verificação seja feita no sinal anterior
-                    # e o resultado atual.
-                    # Isso é um pouco complexo devido à forma como os sinais são adicionados.
-                    # Uma abordagem mais limpa seria verificar o sinal ANTERIOR ao adicionar um NOVO resultado.
-                    pass # Deixamos essa lógica no add_outcome para ser mais clara
-            
             # Percorre os sinais de trás para frente para encontrar o último sinal PENDENTE de verificação
             # E compara com o resultado 'outcome' que acabou de ser adicionado
             for i in reversed(range(len(self.signals))):
-                if self.signals[i].get('correct') is None:
+                if self.signals[i].get('correct') is None: # Se o sinal ainda não foi verificado
                     if self.signals[i]['prediction'] == current_outcome:
                         self.signals[i]['correct'] = "✅"
                         self.performance['hits'] += 1
@@ -60,8 +46,9 @@ if 'analyzer' not in st.session_state:
                         self.signals[i]['correct'] = "❌"
                         self.performance['misses'] += 1
                     self.performance['total'] += 1
-                    return self.signals[i]['correct'] # Retorna o status do sinal que foi verificado
-            return None # Nenhum sinal pendente encontrado
+                    # Uma vez que encontramos e verificamos o último sinal pendente, saímos.
+                    # Não precisamos retornar o status aqui, pois a atualização é interna.
+                    return 
 
         def undo_last(self):
             if self.history:
@@ -71,14 +58,17 @@ if 'analyzer' not in st.session_state:
                 # Iteramos de trás para frente para encontrar o sinal associado ao resultado removido
                 signal_removed = False
                 for i in reversed(range(len(self.signals))):
+                    # Se o sinal foi gerado no mesmo timestamp do outcome removido
                     if self.signals[i]['time'] == removed_outcome_time:
+                        # Se o sinal já tinha sido verificado, ajusta o desempenho
                         if self.signals[i].get('correct') == "✅":
                             self.performance['hits'] = max(0, self.performance['hits'] - 1)
                             self.performance['total'] = max(0, self.performance['total'] - 1)
                         elif self.signals[i].get('correct') == "❌":
                             self.performance['misses'] = max(0, self.performance['misses'] - 1)
                             self.performance['total'] = max(0, self.performance['total'] - 1)
-                        self.signals.pop(i) # Remove o sinal
+                        # Remove o sinal
+                        self.signals.pop(i) 
                         signal_removed = True
                         break # Encontrou e removeu, pode sair do loop
                 
@@ -306,7 +296,7 @@ with col5:
         st.session_state.analyzer.clear_history()
         st.rerun()
 
----
+st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
 
 ## Histórico de Resultados (9 por linha)
 
@@ -318,6 +308,7 @@ if st.session_state.analyzer.history:
     total_outcomes = len(all_outcomes)
     
     # Calcular o número de linhas necessárias (máximo 8 linhas)
+    # Adicionado +8 para arredondar para cima corretamente para divisões por 9
     num_linhas = min(8, (total_outcomes + 8) // 9) 
     
     # Criar linhas com 9 resultados cada
@@ -327,6 +318,7 @@ if st.session_state.analyzer.history:
         
         # Calcular índice inicial para esta linha
         start_idx = linha * 9
+        # Certificar-se de não ir além do total de resultados disponíveis
         end_idx = min(start_idx + 9, total_outcomes)
         
         # Preencher cada coluna com o resultado correspondente
@@ -342,7 +334,7 @@ if st.session_state.analyzer.history:
 else:
     st.info("Nenhum resultado registrado. Use os botões acima para começar.")
 
----
+st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
 
 ## Últimas Detecções de Padrões
 
@@ -352,7 +344,7 @@ if st.session_state.analyzer.signals:
     for signal in reversed(st.session_state.analyzer.signals[-5:]):
         # Determinar a cor do status
         status_color = "green" if signal.get('correct') == "✅" else "red" if signal.get('correct') == "❌" else "gray"
-        status_text = f"<span style='color: {status_color}; font-weight: bold;'>{signal.get('correct', '')}</span>"
+        status_text = f"<span style='color: {status_color}; font-weight: bold;'>{signal.get('correct', 'Pendente')}</span>" # 'Pendente' se ainda não verificado
         
         # Emoji da previsão
         prediction_emoji = ""
@@ -367,7 +359,7 @@ if st.session_state.analyzer.signals:
 else:
     st.write("Nenhum padrão detectado ainda.")
 
----
+st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
 
 ## Estatísticas de Desempenho
 
@@ -381,7 +373,7 @@ if perf['total'] > 0:
 else:
     st.write("Aguardando dados para cálculo de estatísticas.")
 
----
+st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
 
 ## Padrões Implementados
 
@@ -421,9 +413,7 @@ with st.expander("Ver descrição dos 30 padrões"):
     30. Padrão Reativo: A-H-A-H-H
     """)
 
----
-
-st.markdown("---")
+st.markdown("---") # CORREÇÃO DE SINTAXE AQUI
 st.caption("Sistema desenvolvido com base em algoritmos patenteados de detecção de padrões - v2.0")
 
 # Estilos CSS adicionais
