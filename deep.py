@@ -37,32 +37,53 @@ if 'analyzer' not in st.session_state:
         def verify_previous_prediction(self, current_outcome):
             if len(self.signals) > 0:
                 last_signal = self.signals[-1]
-                if last_signal['prediction'] == current_outcome:
-                    self.performance['hits'] += 1
+                # A verificação deve ocorrer ANTES de adicionar o novo sinal para ser sobre a PREDIÇÃO ANTERIOR
+                # E o resultado atual.
+                # Remove o sinal mais recente para que a verificação seja feita com base no penúltimo sinal
+                # e o resultado atual, e depois adiciona o sinal corrigido.
+                # Se o último sinal ainda não tem 'correct', é o que acabou de ser gerado, não verificamos ele aqui.
+                if last_signal.get('correct') is None: # Se o último sinal ainda não foi verificado
+                    # Remove o sinal temporariamente para que a verificação seja feita no sinal anterior
+                    # e o resultado atual.
+                    # Isso é um pouco complexo devido à forma como os sinais são adicionados.
+                    # Uma abordagem mais limpa seria verificar o sinal ANTERIOR ao adicionar um NOVO resultado.
+                    pass # Deixamos essa lógica no add_outcome para ser mais clara
+            
+            # Percorre os sinais de trás para frente para encontrar o último sinal PENDENTE de verificação
+            # E compara com o resultado 'outcome' que acabou de ser adicionado
+            for i in reversed(range(len(self.signals))):
+                if self.signals[i].get('correct') is None:
+                    if self.signals[i]['prediction'] == current_outcome:
+                        self.signals[i]['correct'] = "✅"
+                        self.performance['hits'] += 1
+                    else:
+                        self.signals[i]['correct'] = "❌"
+                        self.performance['misses'] += 1
                     self.performance['total'] += 1
-                    return "✅"
-                else:
-                    self.performance['misses'] += 1
-                    self.performance['total'] += 1
-                    return "❌"
-            return None
+                    return self.signals[i]['correct'] # Retorna o status do sinal que foi verificado
+            return None # Nenhum sinal pendente encontrado
 
         def undo_last(self):
             if self.history:
-                removed = self.history.pop()
+                removed_outcome_time, removed_outcome = self.history.pop()
                 
-                # Atualiza desempenho se necessário
-                if self.signals and self.signals[-1]['time'] == removed[0]:
-                    removed_signal = self.signals.pop()
-                    if removed_signal['correct'] == "✅":
-                        self.performance['hits'] = max(0, self.performance['hits'] - 1)
-                        self.performance['total'] = max(0, self.performance['total'] - 1)
-                    elif removed_signal['correct'] == "❌":
-                        self.performance['misses'] = max(0, self.performance['misses'] - 1)
-                        self.performance['total'] = max(0, self.performance['total'] - 1)
+                # Ajusta o desempenho e remove o sinal se ele foi o último gerado/verificado
+                # Iteramos de trás para frente para encontrar o sinal associado ao resultado removido
+                signal_removed = False
+                for i in reversed(range(len(self.signals))):
+                    if self.signals[i]['time'] == removed_outcome_time:
+                        if self.signals[i].get('correct') == "✅":
+                            self.performance['hits'] = max(0, self.performance['hits'] - 1)
+                            self.performance['total'] = max(0, self.performance['total'] - 1)
+                        elif self.signals[i].get('correct') == "❌":
+                            self.performance['misses'] = max(0, self.performance['misses'] - 1)
+                            self.performance['total'] = max(0, self.performance['total'] - 1)
+                        self.signals.pop(i) # Remove o sinal
+                        signal_removed = True
+                        break # Encontrou e removeu, pode sair do loop
                 
                 self.save_data()
-                return removed
+                return removed_outcome_time, removed_outcome
             return None
 
         def clear_history(self):
@@ -240,7 +261,9 @@ if 'analyzer' not in st.session_state:
                         self.history = data.get('history', [])
                         self.signals = data.get('signals', [])
                         self.performance = data.get('performance', {'total': 0, 'hits': 0, 'misses': 0})
-                except:
+                except Exception as e:
+                    # Em caso de erro na leitura, inicializa com valores padrão e informa
+                    st.warning(f"Erro ao carregar dados do arquivo: {e}. Iniciando com dados vazios.")
                     self.history = []
                     self.signals = []
                     self.performance = {'total': 0, 'hits': 0, 'misses': 0}
@@ -283,18 +306,19 @@ with col5:
         st.session_state.analyzer.clear_history()
         st.rerun()
 
-# CORREÇÃO DEFINITIVA: Exibição do histórico em linhas horizontais de 9 resultados
-st.subheader("Histórico de Resultados (9 por linha)")
+---
+
+## Histórico de Resultados (9 por linha)
+
 st.caption("Mais recente → Mais antigo (esquerda → direita)")
 
-# Obter todos os resultados (mais recente primeiro)
 if st.session_state.analyzer.history:
     # Pegar os resultados em ordem reversa (mais recente primeiro)
     all_outcomes = [outcome for _, outcome in st.session_state.analyzer.history][::-1]
     total_outcomes = len(all_outcomes)
     
     # Calcular o número de linhas necessárias (máximo 8 linhas)
-    num_linhas = min(8, (total_outcomes + 8) // 9)
+    num_linhas = min(8, (total_outcomes + 8) // 9) 
     
     # Criar linhas com 9 resultados cada
     for linha in range(num_linhas):
@@ -306,8 +330,8 @@ if st.session_state.analyzer.history:
         end_idx = min(start_idx + 9, total_outcomes)
         
         # Preencher cada coluna com o resultado correspondente
-        for i, idx in enumerate(range(start_idx, end_idx)):
-            outcome = all_outcomes[idx]
+        for i, outcome_idx in enumerate(range(start_idx, end_idx)):
+            outcome = all_outcomes[outcome_idx]
             with cols[i]:
                 if outcome == 'H':
                     st.markdown("<div style='font-size: 24px; text-align: center;'>🔴</div>", unsafe_allow_html=True)
@@ -318,11 +342,14 @@ if st.session_state.analyzer.history:
 else:
     st.info("Nenhum resultado registrado. Use os botões acima para começar.")
 
-# Últimos sinais detectados
-st.subheader("Últimas Detecções de Padrões")
+---
+
+## Últimas Detecções de Padrões
+
 if st.session_state.analyzer.signals:
     # Mostrar os últimos 5 sinais (do mais recente para o mais antigo)
-    for signal in st.session_state.analyzer.signals[-5:]:
+    # Garante que os sinais mais recentes são exibidos primeiro
+    for signal in reversed(st.session_state.analyzer.signals[-5:]):
         # Determinar a cor do status
         status_color = "green" if signal.get('correct') == "✅" else "red" if signal.get('correct') == "❌" else "gray"
         status_text = f"<span style='color: {status_color}; font-weight: bold;'>{signal.get('correct', '')}</span>"
@@ -340,8 +367,10 @@ if st.session_state.analyzer.signals:
 else:
     st.write("Nenhum padrão detectado ainda.")
 
-# Estatísticas detalhadas
-st.subheader("Estatísticas de Desempenho")
+---
+
+## Estatísticas de Desempenho
+
 perf = st.session_state.analyzer.performance
 if perf['total'] > 0:
     st.write(f"**Taxa de acerto:** {perf['hits'] / perf['total'] * 100:.2f}%")
@@ -352,8 +381,10 @@ if perf['total'] > 0:
 else:
     st.write("Aguardando dados para cálculo de estatísticas.")
 
-# Explicação dos padrões
-st.subheader("Padrões Implementados")
+---
+
+## Padrões Implementados
+
 with st.expander("Ver descrição dos 30 padrões"):
     st.write("""
     **Padrões Base (1-14):**
@@ -390,7 +421,8 @@ with st.expander("Ver descrição dos 30 padrões"):
     30. Padrão Reativo: A-H-A-H-H
     """)
 
-# Rodapé
+---
+
 st.markdown("---")
 st.caption("Sistema desenvolvido com base em algoritmos patenteados de detecção de padrões - v2.0")
 
