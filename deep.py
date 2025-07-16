@@ -7,7 +7,7 @@ from datetime import datetime
 if 'analyzer' not in st.session_state:
     class FootballStudioAnalyzer:
         def __init__(self):
-            self.history = []
+            self.history = []  # Lista de tuplas (timestamp, outcome)
             self.signals = []
             self.performance = {'total': 0, 'hits': 0, 'misses': 0}
             self.load_data()
@@ -283,12 +283,14 @@ with col5:
         st.session_state.analyzer.clear_history()
         st.rerun()
 
-# Exibição do histórico em linhas de 9 resultados
+# CORREÇÃO: Exibição do histórico em linhas de 9 resultados
 st.subheader("Histórico de Resultados (9 por linha)")
 st.caption("Mais recente → Mais antigo (esquerda → direita)")
 
 # Obter todos os resultados (do mais recente para o mais antigo)
-all_outcomes = [outcome for _, outcome in reversed(st.session_state.analyzer.history)]
+all_outcomes = [outcome for _, outcome in st.session_state.analyzer.history]
+# Inverter para que o mais recente seja o primeiro
+all_outcomes = all_outcomes[::-1]
 total_outcomes = len(all_outcomes)
 
 # Calcular o número de linhas (máximo 8)
@@ -311,6 +313,10 @@ for linha in range(num_linhas):
                     st.markdown("<div style='font-size: 24px; text-align: center;'>🔵</div>", unsafe_allow_html=True)
                 elif outcome == 'T':
                     st.markdown("<div style='font-size: 24px; text-align: center;'>🟡</div>", unsafe_allow_html=True)
+        else:
+            # Espaço vazio para manter o layout
+            with cols[coluna]:
+                st.write("")
 
 # Mensagem se não houver histórico
 if total_outcomes == 0:
@@ -320,7 +326,7 @@ if total_outcomes == 0:
 st.subheader("Últimas Detecções de Padrões")
 if st.session_state.analyzer.signals:
     # Mostrar os últimos 5 sinais (do mais recente para o mais antigo)
-    for signal in reversed(st.session_state.analyzer.signals[-5:]):
+    for signal in st.session_state.analyzer.signals[-5:]:
         # Determinar a cor do status
         status_color = "green" if signal.get('correct') == "✅" else "red" if signal.get('correct') == "❌" else "gray"
         status_text = f"<span style='color: {status_color}; font-weight: bold;'>{signal.get('correct', '')}</span>"
