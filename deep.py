@@ -289,25 +289,28 @@ st.caption("Mais recente → Mais antigo (esquerda → direita)")
 
 # Obter todos os resultados em ordem reversa (mais recente primeiro)
 if st.session_state.analyzer.history:
+    # Obter apenas os resultados (sem timestamp) em ordem inversa
     outcomes = [outcome for _, outcome in st.session_state.analyzer.history][::-1]
+    
+    # Limitar a 72 resultados (8 linhas x 9 colunas)
+    outcomes = outcomes[:72]
     total_outcomes = len(outcomes)
     
-    # Número máximo de linhas (8)
-    max_lines = min(8, (total_outcomes + 8) // 9)
+    # Calcular número de linhas necessárias
+    num_lines = (total_outcomes + 8) // 9  # Arredondamento para cima
     
-    # Para cada linha
-    for line in range(max_lines):
+    for line in range(num_lines):
         # Criar uma linha com 9 colunas
         cols = st.columns(9)
         
         # Calcular índices para esta linha
         start_index = line * 9
-        end_index = min((line + 1) * 9, total_outcomes)
+        end_index = min(start_index + 9, total_outcomes)
         
-        # Para cada coluna nesta linha
+        # Preencher cada coluna na linha
         for idx in range(start_index, end_index):
-            col_index = idx - start_index
-            with cols[col_index]:
+            col_idx = idx - start_index
+            with cols[col_idx]:
                 outcome = outcomes[idx]
                 if outcome == 'H':
                     st.markdown("<div style='font-size: 24px; text-align: center;'>🔴</div>", unsafe_allow_html=True)
