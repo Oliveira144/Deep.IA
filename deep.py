@@ -14,42 +14,46 @@ class FootballStudioAnalyzer:
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.history.append((timestamp, outcome))
 
-        pattern, prediction = self.detect_pattern()
+        # Verifica a previsão anterior ANTES de detectar um novo padrão para o resultado atual
         is_correct = self.verify_previous_prediction(outcome)
 
+        # Detecta o padrão e a previsão para o PRÓXIMO jogo, com base no histórico ATUALIZADO
+        pattern, prediction = self.detect_pattern()
+
+        # Adiciona o sinal com a previsão para o próximo jogo
+        # O 'correct' para este novo sinal será preenchido na próxima rodada
         if pattern is not None:
-            # Garante que 'correct' seja adicionado apenas se for uma verificação válida
-            # E que o sinal seja adicionado apenas se houver uma previsão
             self.signals.append({
                 'time': timestamp,
                 'pattern': pattern,
                 'prediction': prediction,
-                'correct': is_correct # is_correct pode ser None se não houver previsão anterior para verificar
+                'correct': None # Inicialmente None, será preenchido no próximo add_outcome
             })
 
         self.save_data() # Salva dados após adicionar o resultado
         return pattern, prediction, is_correct
 
     def verify_previous_prediction(self, current_outcome):
-        # Verifica se há sinais e se o último sinal ainda não foi verificado
-        if self.signals and self.signals[-1].get('correct') is None:
-            last_signal = self.signals[-1]
-            if last_signal['prediction'] == current_outcome:
-                self.performance['hits'] += 1
-                self.performance['total'] += 1
-                last_signal['correct'] = "✅" # Atualiza o sinal diretamente
-                return "✅"
-            else:
-                self.performance['misses'] += 1
-                self.performance['total'] += 1
-                last_signal['correct'] = "❌" # Atualiza o sinal diretamente
-                return "❌"
+        # Percorre os sinais de trás para frente para encontrar o último sinal não verificado
+        for i in reversed(range(len(self.signals))):
+            signal = self.signals[i]
+            if signal.get('correct') is None: # Encontrou um sinal que ainda não foi verificado
+                if signal['prediction'] == current_outcome:
+                    self.performance['hits'] += 1
+                    self.performance['total'] += 1
+                    signal['correct'] = "✅"
+                    return "✅"
+                else:
+                    self.performance['misses'] += 1
+                    self.performance['total'] += 1
+                    signal['correct'] = "❌"
+                    return "❌"
         return None # Retorna None se não houver previsão anterior para verificar
 
     def undo_last(self):
         if self.history:
             removed_time, _ = self.history.pop() # Pega o timestamp do item removido
-            # Tenta remover o sinal correspondente se existir
+            # Tenta remover o sinal correspondente se existir e for o último adicionado
             if self.signals and self.signals[-1]['time'] == removed_time:
                 removed_signal = self.signals.pop()
                 # Ajusta as métricas de desempenho apenas se o sinal removido tinha um status de correção
@@ -77,12 +81,12 @@ class FootballStudioAnalyzer:
         outcomes = [outcome for _, outcome in self.history]
         n = len(outcomes)
 
-        # Padrão Rápido 1: Alternância
+        # Padrão Rápido 1: Alternância (Ex: H A H -> Sugere A)
         if n >= 2 and outcomes[-1] != outcomes[-2]:
             # Se o último e o penúltimo forem diferentes, sugere o último para continuar a alternância
             return 31, outcomes[-1]
 
-        # Padrão Rápido 2: Repetição
+        # Padrão Rápido 2: Repetição (Ex: H H H -> Sugere H)
         if n >= 3 and outcomes[-1] == outcomes[-2] and outcomes[-2] == outcomes[-3]:
             # Se os últimos três forem iguais, sugere o último para continuar a repetição
             return 32, outcomes[-1]
@@ -193,6 +197,50 @@ with cols_controls[1]:
     if st.button("🗑️ Limpar Tudo", use_container_width=True, type="secondary"):
         st.session_state.analyzer.clear_history()
         st.rerun()
+
+st.markdown("---")
+
+## Sugestão para o Próximo Jogo
+
+# Detecta o padrão e a previsão mais recente para o próximo jogo
+current_pattern, current_prediction = st.session_state.analyzer.detect_pattern()
+
+if current_prediction:
+    display_prediction = ""
+    bg_color_prediction = ""
+    if current_prediction == 'H':
+        display_prediction = "🔴 HOME"
+        bg_color_prediction = "rgba(255, 0, 0, 0.2)" # Um pouco mais forte para destaque
+    elif current_prediction == 'A':
+        display_prediction = "🔵 AWAY"
+        bg_color_prediction = "rgba(0, 0, 255, 0.2)"
+    else: # 'T' para Empate
+        display_prediction = "🟡 EMPATE"
+        bg_color_prediction = "rgba(255, 255, 0, 0.2)"
+
+    st.markdown(f"""
+    <div style="
+        background: {bg_color_prediction};
+        border-radius: 15px; /* Cantos mais arredondados */
+        padding: 20px; /* Mais preenchimento */
+        margin: 20px 0;
+        display: flex;
+        flex-direction: column; /* Para empilhar texto e previsão */
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 6px 12px rgba(0,0,0,0.2); /* Sombra mais pronunciada */
+        border: 2px solid #fff; /* Borda para destaque */
+    ">
+        <div style="font-size: 20px; font-weight: bold; margin-bottom: 10px;">
+            Sugestão Baseada no Padrão {current_pattern if current_pattern else "Atual"}:
+        </div>
+        <div style="font-size: 40px; font-weight: bold; color: #fff; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">
+            {display_prediction}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.info("Registre pelo menos 2 resultados para ver uma sugestão para o próximo jogo.")
 
 st.markdown("---")
 
